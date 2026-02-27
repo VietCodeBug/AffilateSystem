@@ -58,8 +58,17 @@ export function ContentHunterPage() {
     ]);
     const [threads, setThreads] = useState<CrawledThread[]>([]);
     const [filter, setFilter] = useState("Tất cả");
+    const [dateFilter, setDateFilter] = useState("3_days"); // "today", "yesterday", "3_days", "all"
     const [crawlDialogOpen, setCrawlDialogOpen] = useState(false);
     const [initialLoading, setInitialLoading] = useState(true);
+
+    // Pagination
+    const [page, setPage] = useState(1);
+    const [hasMore, setHasMore] = useState(true);
+    const LIMIT = 30;
+
+    // Loading states for actions
+    const [sendingAI, setSendingAI] = useState<Record<string, boolean>>({});
 
     // Detail modal state
     const [selectedThread, setSelectedThread] = useState<CrawledThread | null>(null);
@@ -67,19 +76,61 @@ export function ContentHunterPage() {
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailContent, setDetailContent] = useState("");
 
-    /* ─── Load stored threads from DB on mount ─── */
-    useEffect(() => {
-        async function loadStored() {
-            try {
-                const res = await fetch("/api/threads?limit=100");
-                const data = await res.json();
-                if (data.threads?.length) {
-                    setThreads(data.threads.map((t: CrawledThread) => ({
-                        ...t,
-                        time: t.time || t.time_text || "",
-                        source: t.source || "unknown",
-                    })));
+    /* ─── Load stored threads from DB on mount & filter change ─── */
+    const loadStored = useCallback(async (isLoadMore = false, currentPage = page) => {
+        if (!isLoadMore) setInitialLoading(true);
+        try {
+            // Calculate date ranges
+            let startDateParam = "";
+            const now = new Date();
+            if (dateFilter === "today") {
+                now.setHours(0, 0, 0, 0);
+                startDateParam = now.toISOString();
+            } else if (dateFilter === "yesterday") {
+                const yest = new Date(now);
+                yest.setDate(yest.getDate() - 1);
+                yest.setHours(0, 0, 0, 0);
+                startDateParam = yest.toISOString();
+
+                // End of yesterday
+                const endYest = new Date(now);
+                endYest.setDate(endYest.getDate() - 1);
+                endYest.setHours(23, 59, 59, 999);
+            } else if (dateFilter === "3_days") {
+                const past = new Date(now);
+                past.setDate(past.getDate() - 3);
+                startDateParam = past.toISOString();
+            }
+
+            const offset = (currentPage - 1) * LIMIT;
+            let url = `/api/threads?limit=${LIMIT}&offset=${offset}`;
+            if (startDateParam) url += `&start_date=${encodeURIComponent(startDateParam)}`;
+
+            const res = await fetch(url);
+            const data = await res.json();
+
+            if (data.threads) {
+                const loadedThreads = data.threads.map((t: CrawledThread) => ({
+                    ...t,
+                    time: t.time || t.time_text || "",
+                    source: t.source || "unknown",
+                }));
+
+                if (isLoadMore) {
+                    setThreads(prev => {
+                        const existingIds = new Set(prev.map(p => p.id));
+                        const newToAdd = loadedThreads.filter((nt: CrawledThread) => !existingIds.has(nt.id));
+                        return [...prev, ...newToAdd];
+                    });
+                } else {
+                    setThreads(loadedThreads);
                 }
+
+                setHasMore(loadedThreads.length === LIMIT);
+            }
+
+            // Stats
+            if (!isLoadMore) {
                 const statsRes = await fetch("/api/stats");
                 const stats = await statsRes.json();
                 setSources((prev) =>
@@ -88,14 +139,23 @@ export function ContentHunterPage() {
                         total: stats[s.key] || 0,
                     }))
                 );
-            } catch {
-                // Backend not running
-            } finally {
-                setInitialLoading(false);
             }
+        } catch {
+            // Backend not running
+        } finally {
+            setInitialLoading(false);
         }
-        loadStored();
-    }, []);
+    }, [dateFilter, page]);
+
+    useEffect(() => {
+        loadStored(page > 1, page);
+    }, [page, dateFilter, loadStored]);
+
+    // Handle date filter change
+    const handleDateFilterChange = (val: string) => {
+        setDateFilter(val);
+        setPage(1); // Reset pagination
+    };
 
     /* ─── View thread detail ─── */
     const viewDetail = async (thread: CrawledThread) => {
@@ -215,8 +275,42 @@ export function ContentHunterPage() {
         toast("Đã xóa bài viết");
     };
 
-    const sendToAI = (thread: CrawledThread) => {
-        toast.success(`Đã gửi sang AI Writer`, { description: `"${thread.title.slice(0, 40)}..."` });
+    const sendToAI = async (thread: CrawledThread) => {
+        if ((thread as any).sent_to_ai) return; // Prevent double send
+
+        setSendingAI(prev => ({ ...prev, [thread.id]: true }));
+        try {
+            const productName = prompt("Tên sản phẩm muốn gợi ý cho bài này?", "Bàn phím cơ văn phòng");
+            if (!productName) {
+                setSendingAI(prev => ({ ...prev, [thread.id]: false }));
+                return;
+            }
+
+            const res = await fetch(`/api/ai/generate-from-thread/${thread.id}?product_name=${encodeURIComponent(productName)}`, {
+                method: "POST"
+            });
+            const data = await res.json();
+
+            if (data.error) {
+                toast.error("Lỗi AI", { description: data.error });
+                setSendingAI(prev => ({ ...prev, [thread.id]: false }));
+            } else {
+                toast.success(`Đã gửi sang AI Writer`, { description: `Đã tạo chiến dịch cho "${productName}"` });
+
+                // Update local list to mark as sent immediately
+                setThreads(prev => prev.map(t =>
+                    t.id === thread.id ? { ...t, sent_to_ai: true } : t
+                ));
+
+                // Keep it showing as loading for just a moment longer for UX
+                setTimeout(() => {
+                    setSendingAI(prev => ({ ...prev, [thread.id]: false }));
+                }, 500);
+            }
+        } catch (error) {
+            toast.error("Lỗi kết nối", { description: "Không thể gọi API AI" });
+            setSendingAI(prev => ({ ...prev, [thread.id]: false }));
+        }
     };
 
     /* ─── Filter ─── */
@@ -301,8 +395,8 @@ export function ContentHunterPage() {
                                 <div className="flex-1">
                                     <h4 className="text-sm font-semibold text-gray-800">{src.name}</h4>
                                     <span className={`text-[11px] font-semibold flex items-center gap-1 ${src.status === "crawling" ? "text-orange-500" :
-                                            src.status === "done" ? "text-green-500" :
-                                                src.status === "error" ? "text-red-500" : "text-gray-400"
+                                        src.status === "done" ? "text-green-500" :
+                                            src.status === "error" ? "text-red-500" : "text-gray-400"
                                         }`}>
                                         {src.status === "crawling" ? <><Loader2 className="w-2.5 h-2.5 animate-spin" /> Đang cào...</> :
                                             src.status === "done" ? <><CheckCircle className="w-2.5 h-2.5" /> Cào xong!</> :
@@ -349,15 +443,32 @@ export function ContentHunterPage() {
                             </span>
                         )}
                     </div>
-                    <div className="flex gap-1.5">
-                        {filterOptions.map((f) => (
-                            <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1 rounded-full text-[11px] font-medium transition-all cursor-pointer ${filter === f
+
+                    <div className="flex gap-2 items-center w-full md:w-auto mt-2 md:mt-0">
+                        {/* Source filters */}
+                        <div className="flex gap-1.5 mr-2">
+                            {filterOptions.map((f) => (
+                                <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1 rounded-full text-[11px] font-medium transition-all cursor-pointer ${filter === f
                                     ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-sm"
                                     : "border border-gray-200 text-gray-500 hover:border-orange-300 hover:text-orange-600"
-                                }`}>
-                                {f}
-                            </button>
-                        ))}
+                                    }`}>
+                                    {f}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Date filters */}
+                        <select
+                            value={dateFilter}
+                            onChange={(e) => handleDateFilterChange(e.target.value)}
+                            className="text-[11px] px-2 py-1.5 rounded-full border border-gray-200 text-gray-600 focus:outline-none focus:border-orange-400 bg-transparent pr-7 appearance-none cursor-pointer"
+                            style={{ backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3e%3cpolyline points=\'6 9 12 15 18 9\'%3e%3c/polyline%3e%3c/svg%3e")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center', backgroundSize: '12px' }}
+                        >
+                            <option value="today">Hôm nay</option>
+                            <option value="yesterday">Hôm qua</option>
+                            <option value="3_days">3 ngày gần đây</option>
+                            <option value="all">Tất cả thời gian</option>
+                        </select>
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -369,78 +480,109 @@ export function ContentHunterPage() {
                         </div>
                     ) : (
                         <div className="divide-y divide-gray-50">
-                            {filtered.map((thread) => (
-                                <div
-                                    key={`${thread.source}-${thread.id}`}
-                                    className="flex items-start gap-3.5 py-4 first:pt-0 last:pb-0 group hover:bg-gray-50/50 -mx-6 px-6 transition-colors cursor-pointer"
-                                    onClick={() => viewDetail(thread)}
-                                >
-                                    {/* Source badge */}
-                                    <Badge className={`${sourceColor(thread.source)} text-white text-[9px] font-bold shrink-0 rounded-lg shadow-sm mt-0.5`}>
-                                        {sourceLabel(thread.source)}
-                                    </Badge>
+                            {filtered.map((thread) => {
+                                const isSentToAI = (thread as any).sent_to_ai;
+                                return (
+                                    <div
+                                        key={`${thread.source}-${thread.id}`}
+                                        className={`flex items-start gap-3.5 py-4 first:pt-0 last:pb-0 group -mx-6 px-6 transition-colors cursor-pointer ${isSentToAI ? 'bg-gray-50 opacity-75' : 'hover:bg-orange-50/30'}`}
+                                        onClick={() => viewDetail(thread)}
+                                    >
+                                        {/* Source badge */}
+                                        <Badge className={`${sourceColor(thread.source)} text-white text-[9px] font-bold shrink-0 rounded-lg shadow-sm mt-0.5`}>
+                                            {sourceLabel(thread.source)}
+                                        </Badge>
 
-                                    {/* Content preview */}
-                                    <div className="flex-1 min-w-0">
-                                        <h4 className="text-[13px] font-medium text-gray-700 leading-snug line-clamp-2 group-hover:text-orange-600 transition-colors">
-                                            {thread.prefix && (
-                                                <Badge variant="secondary" className="text-[9px] rounded mr-1.5 bg-gray-100 text-gray-500 font-normal">
-                                                    {thread.prefix}
-                                                </Badge>
+                                        {/* Content preview */}
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className="text-[13px] font-medium text-gray-700 leading-snug line-clamp-2 group-hover:text-orange-600 transition-colors">
+                                                {thread.prefix && (
+                                                    <Badge variant="secondary" className="text-[9px] rounded mr-1.5 bg-gray-100 text-gray-500 font-normal">
+                                                        {thread.prefix}
+                                                    </Badge>
+                                                )}
+                                                {thread.title}
+                                            </h4>
+                                            {/* Content preview line */}
+                                            {thread.content && (
+                                                <p className="text-[11px] text-gray-400 mt-1 line-clamp-1">
+                                                    {thread.content.slice(0, 120)}
+                                                </p>
                                             )}
-                                            {thread.title}
-                                        </h4>
-                                        {/* Content preview line */}
-                                        {thread.content && (
-                                            <p className="text-[11px] text-gray-400 mt-1 line-clamp-1">
-                                                {thread.content.slice(0, 120)}
-                                            </p>
-                                        )}
-                                        <div className="flex items-center gap-3 mt-1.5 text-[11px] text-gray-400">
-                                            <span className="font-medium text-gray-500">@{thread.author}</span>
-                                            <span className="flex items-center gap-0.5">
-                                                <MessageCircle className="w-3 h-3" /> {thread.replies}
-                                            </span>
-                                            <span className="flex items-center gap-0.5">
-                                                {thread.source === "reddit" ? <ThumbsUp className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                                                {thread.views}
-                                            </span>
-                                            <span className="flex items-center gap-0.5">
-                                                <Clock className="w-3 h-3" /> {thread.time}
-                                            </span>
+                                            <div className="flex items-center gap-3 mt-1.5 text-[11px] text-gray-400">
+                                                <span className="font-medium text-gray-500">@{thread.author}</span>
+                                                <span className="flex items-center gap-0.5">
+                                                    <MessageCircle className="w-3 h-3" /> {thread.replies}
+                                                </span>
+                                                <span className="flex items-center gap-0.5">
+                                                    {thread.source === "reddit" ? <ThumbsUp className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                                    {thread.views}
+                                                </span>
+                                                <span className="flex items-center gap-0.5">
+                                                    <Clock className="w-3 h-3" /> {thread.time}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Actions (stop propagation to prevent opening detail) */}
+                                        <div className={`flex gap-1 shrink-0 transition-opacity ${isSentToAI || sendingAI[thread.id] ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} onClick={(e) => e.stopPropagation()}>
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                className={`w-8 h-8 transition-all ${isSentToAI ? 'bg-green-50 border-green-200 text-green-600 hover:bg-green-100 hover:text-green-700' : 'hover:bg-orange-50 hover:text-orange-600 hover:border-orange-300'}`}
+                                                onClick={() => sendToAI(thread)}
+                                                title={isSentToAI ? "Đã gửi AI" : "Gửi sang AI Writer"}
+                                                disabled={sendingAI[thread.id] || isSentToAI}
+                                            >
+                                                {sendingAI[thread.id] ? (
+                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                ) : isSentToAI ? (
+                                                    <CheckCircle className="w-3.5 h-3.5" />
+                                                ) : (
+                                                    <Wand2 className="w-3.5 h-3.5" />
+                                                )}
+                                            </Button>
+                                            <Button variant="ghost" size="icon" className="w-8 h-8 hover:bg-blue-50 hover:text-blue-600" onClick={() => window.open(thread.url, "_blank")} title="Mở bài gốc">
+                                                <ExternalLink className="w-3.5 h-3.5" />
+                                            </Button>
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="w-8 h-8 hover:bg-red-50 hover:text-red-500">
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                </AlertDialogTrigger>
+                                                <AlertDialogContent>
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle>Xóa bài viết?</AlertDialogTitle>
+                                                        <AlertDialogDescription>
+                                                            Xóa &quot;{thread.title.slice(0, 50)}...&quot;?
+                                                        </AlertDialogDescription>
+                                                    </AlertDialogHeader>
+                                                    <AlertDialogFooter>
+                                                        <AlertDialogCancel>Hủy</AlertDialogCancel>
+                                                        <AlertDialogAction className="bg-red-500 hover:bg-red-600" onClick={() => deleteThread(thread.id)}>Xóa</AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
                                         </div>
                                     </div>
+                                );
+                            })}
 
-                                    {/* Actions (stop propagation to prevent opening detail) */}
-                                    <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                                        <Button variant="outline" size="icon" className="w-8 h-8 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-300" onClick={() => sendToAI(thread)} title="Gửi sang AI Writer">
-                                            <Wand2 className="w-3.5 h-3.5" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon" className="w-8 h-8 hover:bg-blue-50 hover:text-blue-600" onClick={() => window.open(thread.url, "_blank")} title="Mở bài gốc">
-                                            <ExternalLink className="w-3.5 h-3.5" />
-                                        </Button>
-                                        <AlertDialog>
-                                            <AlertDialogTrigger asChild>
-                                                <Button variant="ghost" size="icon" className="w-8 h-8 hover:bg-red-50 hover:text-red-500">
-                                                    <Trash2 className="w-3.5 h-3.5" />
-                                                </Button>
-                                            </AlertDialogTrigger>
-                                            <AlertDialogContent>
-                                                <AlertDialogHeader>
-                                                    <AlertDialogTitle>Xóa bài viết?</AlertDialogTitle>
-                                                    <AlertDialogDescription>
-                                                        Xóa &quot;{thread.title.slice(0, 50)}...&quot;?
-                                                    </AlertDialogDescription>
-                                                </AlertDialogHeader>
-                                                <AlertDialogFooter>
-                                                    <AlertDialogCancel>Hủy</AlertDialogCancel>
-                                                    <AlertDialogAction className="bg-red-500 hover:bg-red-600" onClick={() => deleteThread(thread.id)}>Xóa</AlertDialogAction>
-                                                </AlertDialogFooter>
-                                            </AlertDialogContent>
-                                        </AlertDialog>
-                                    </div>
+                            {/* Load more button */}
+                            {hasMore && filtered.length > 0 && (
+                                <div className="py-4 flex justify-center border-t border-gray-50">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setPage(p => p + 1)}
+                                        className="text-xs text-orange-600 border-orange-200 hover:bg-orange-50"
+                                        disabled={initialLoading}
+                                    >
+                                        {initialLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : "Tải thêm bài cũ hơn"}
+                                    </Button>
                                 </div>
-                            ))}
+                            )}
                         </div>
                     )}
                 </CardContent>

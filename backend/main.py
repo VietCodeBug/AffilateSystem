@@ -201,7 +201,20 @@ def rtdb_get(path: str):
 # ═══════════════════════════════════════════
 
 def save_threads(threads: list[dict]) -> int:
-    """Save threads to Firestore, skip duplicates."""
+    """Save threads to Firestore, skip duplicates, and cleanup old ones."""
+    # 1. Auto cleanup old threads (older than 3 days, not sent to AI)
+    try:
+        cleanup_threshold = datetime.now(VN_TZ) - timedelta(days=3)
+        cleanup_iso = cleanup_threshold.isoformat()
+        
+        all_existing = firestore_query("threads")
+        for t in all_existing:
+            if not t.get("sent_to_ai", False) and t.get("crawled_at", "") < cleanup_iso:
+                firestore_delete("threads", t.get("id"))
+    except Exception as e:
+        print(f"⚠️ Cleanup error: {e}")
+
+    # 2. Save new threads
     saved = 0
     for t in threads:
         tid = t.get("id", "")
@@ -231,12 +244,19 @@ def save_threads(threads: list[dict]) -> int:
             saved += 1
     return saved
 
-def get_threads(source: str | None = None, limit: int = 50):
+def get_threads(source: str | None = None, limit: int = 50, start_date: str | None = None, end_date: str | None = None):
     all_threads = firestore_query("threads")
     # Filter
     filtered = [t for t in all_threads if not t.get("deleted", False)]
     if source:
         filtered = [t for t in filtered if t.get("source") == source]
+    
+    # Date filtering
+    if start_date:
+        filtered = [t for t in filtered if t.get("crawled_at", "") >= start_date]
+    if end_date:
+        filtered = [t for t in filtered if t.get("crawled_at", "") <= end_date]
+
     # Sort by crawled_at desc
     filtered.sort(key=lambda x: x.get("crawled_at", ""), reverse=True)
     return filtered[:limit]
@@ -677,9 +697,11 @@ def api_threads(
     source: str | None = Query(None, description="Filter by source: voz, reddit"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    start_date: str | None = Query(None, description="ISO format start date"),
+    end_date: str | None = Query(None, description="ISO format end date"),
 ):
     """Danh sách bài đã cào (từ Firestore)."""
-    threads = get_threads(source=source, limit=limit + offset)
+    threads = get_threads(source=source, limit=limit + offset, start_date=start_date, end_date=end_date)
     total = len(threads)
     threads = threads[offset:offset + limit]
     return {
