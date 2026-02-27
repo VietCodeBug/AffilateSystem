@@ -1,0 +1,22 @@
+Tuyệt vời! Nếu Telegram không bị chặn, thì kèo này "ngon" hơn Google Sheets gấp 10 lần.
+
+Dùng Telegram làm Remote Controller (Điều khiển từ xa) sẽ tiện hơn rất nhiều vì:
+
+Real-time: Bấm nút là chạy ngay, không phải đợi Bot quét file Sheet.
+
+Duyệt bài tiện lợi: Bot gửi bản nháp (Draft) về tin nhắn, bạn đọc thấy ok thì bấm nút "DUYỆT ĐĂNG", thấy dở thì bấm "VIẾT LẠI".
+
+Bảo mật: Chỉ một mình ID Telegram của bạn mới điều khiển được con Bot này.
+
+Dưới đây là mô hình và code mẫu cho giải pháp "VPS + Telegram Bot".
+
+Quy trình hoạt động (Workflow)
+Bước 1: Bạn lướt web trên máy tính công ty (hoặc điện thoại), thấy bài Voz/Reddit hay -> Copy Link.
+
+Bước 2: Paste link đó vào chat với con Bot Telegram.
+
+Bước 3: Con Bot (đang chạy trên VPS) nhận link -> Cào nội dung -> Dùng AI viết lại -> Gắn link Shopee.
+
+Bước 4: Bot gửi lại bạn bản xem trước (Preview).
+
+Bước 5: Bạn bấm nút [🚀 Đăng Ngay] trên Telegram -> Bot đẩy lên Facebook Page + Comment Link.

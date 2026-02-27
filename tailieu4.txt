@@ -1,0 +1,101 @@
+PHẦN 1: TƯ DUY HỆ THỐNG (MINDSET)
+Nguyên tắc cốt lõi: "Lấy số lượng bù chất lượng". Meme thì vòng đời ngắn, cười xong là quên. Nên hệ thống phải đăng liên tục (ví dụ: 30 phút - 1 tiếng/bài).
+
+Mục tiêu: Giữ Reach (lượt tiếp cận) ở mức cao. Facebook thấy Page đăng đều + tương tác tốt -> Tự động đề xuất bài viết lên Newsfeed người lạ.
+
+Điểm chạm tiền (Money hook): Không được spam link ở Caption (sẽ bị bóp tương tác). Link phải nằm ở Comment đầu tiên (Top Comment) hoặc Link Bio.
+
+PHẦN 2: KIẾN TRÚC HỆ THỐNG (SYSTEM DESIGN)
+Chúng ta chia tool làm 3 bộ phận chính:
+
+1. Bộ phận "Săn Mồi" (Content Hunter)
+Tool không cần quá thông minh, chỉ cần biết chỗ lấy "rác" về tái chế.
+
+Nguồn lấy (Source):
+
+Pinterest: Kho ảnh meme vô tận. Search keyword: funny meme, mèo bựa, cursed images.
+
+Instagram/Facebook: Các page meme nước ngoài (9gag, meirl,...) hoặc các page VN (nhưng cẩn thận bản quyền, tốt nhất lấy nước ngoài về dịch).
+
+Reddit: r/memes, r/hmmm (ảnh lạ, không cần text).
+
+Lọc ảnh: Tool tự động loại bỏ các ảnh quá nhỏ (mờ) hoặc ảnh dính watermark to đùng của page khác.
+
+2. Bộ phận "Xào Nấu" (The Chef)
+Đây là lúc AI (Gemini/ChatGPT) tỏa sáng. Nhiệm vụ của nó là làm cho cái ảnh trở nên "Vô tri" và "Hài hước".
+
+Xử lý hình ảnh (Image Processing):
+
+Lách bản quyền: Tool tự động lật ảnh (Mirror), chỉnh màu (Filter nhẹ), hoặc thêm một cái khung viền mờ (Border) để Facebook coi là ảnh mới.
+
+Watermark: Tự động đóng logo Page của bạn vào góc ảnh.
+
+Xử lý Caption (AI Writer):
+
+Prompt cho AI: "Mày là một admin page meme gen Z, chuyên nói năng luyên thuyên, hài hước, đôi khi vô nghĩa. Hãy nhìn cái ảnh này (hoặc nội dung text này) và viết 1 caption thật 'xàm' cho tao. Không dùng icon sến súa. Viết ngắn thôi."
+
+Ví dụ output: "Thứ 2 là ngày đầu tuần, hứa chăm chỉ nhưng mà là chăm chỉ ngủ :)))"
+
+3. Bộ phận "Gài Hàng" (Affiliate Mapper)
+Đây là phần quan trọng nhất để ra tiền. Tool phải biết chọn sản phẩm nào để ném vào comment.
+
+Chiến thuật "Random nhưng có lý":
+
+Nhóm sản phẩm: Bạn chuẩn bị sẵn các bộ link (Collection):
+
+Bộ 1 (Đồ ăn vặt): Khô gà, bánh tráng, mì tôm (Dùng cho post đêm khuya).
+
+Bộ 2 (Đồ công nghệ rẻ): Ốp lưng, cáp sạc, giá đỡ điện thoại (Dùng cho post ban ngày).
+
+Bộ 3 (Đồ bựa/quà tặng): Dép tổ ong, kính mắt hài hước (Dùng cho post meme bựa).
+
+Logic gắn link:
+
+Tool random chọn 1 sản phẩm trong kho.
+
+AI viết comment mồi: "Xem ảnh xong đói vãi, ai ăn khô gà không tao ship" + [Link Shopee rút gọn].
+
+PHẦN 3: KỊCH BẢN VẬN HÀNH (WORKFLOW)
+Bạn hình dung tool nó sẽ chạy 24/7 như thế này:
+
+08:00 AM: Tool quét Pinterest, lấy 50 cái ảnh mèo bựa về kho.
+
+08:05 AM: Tool chạy qua filter, đổi mã hash ảnh, đóng dấu logo.
+
+08:10 AM: AI viết sẵn 50 caption cho 50 cái ảnh đó.
+
+Lên lịch đăng (Scheduler):
+
+Cứ 45 phút đăng 1 bài lên Fanpage và Threads.
+
+Ngay khi bài lên -> Tool dùng nick clone vào like -> Comment link sản phẩm ở dưới.
+
+(Tùy chọn) Tool dùng 5 nick clone khác vào reply comment đó để tạo hiệu ứng ("Ngon vãi", "Đã đặt", "Ship nhanh ko shop").
+
+PHẦN 4: CÁC TÍNH NĂNG CẦN CÓ (MODULES)
+Để bạn giao việc cho đội code (hoặc tự code), đây là list tính năng cần làm:
+
+Crawler Module: Tool cào ảnh từ Instagram/Pinterest (cần hỗ trợ Proxy để không bị chặn IP).
+
+Image Editor Module: Thư viện Python (như Pillow/OpenCV) để resize, đóng dấu, chèn text lên ảnh.
+
+AI Connector: Kết nối Gemini/OpenAI để sinh caption "vô tri".
+
+Affiliate Manager: Nơi bạn nhập list link Shopee vào. Tool sẽ lấy random từ đây ra.
+
+Multi-Page Manager: Nếu bạn muốn nuôi 1 lúc 10 Page (để tăng tỷ lệ ăn tiền), tool phải hỗ trợ đăng lên nhiều page cùng lúc (hoặc lệch giờ nhau).
+
+MẸO RIÊNG CHO MẢNG "MEME VÔ TRI"
+Tập trung vào "Short Video" (Reels): Hiện tại Facebook/Instagram đang ưu tiên Reels.
+
+Idea: Tool lấy video TikTok về -> Xóa logo -> Đăng lên Reels Facebook. Link để ở Bio. Cách này kéo traffic nhanh gấp 10 lần ảnh tĩnh.
+
+Comment điều hướng: Đừng chỉ paste link. Hãy paste ảnh feedback sản phẩm vào comment.
+
+Ví dụ: Post meme về việc đau lưng.
+
+Comment: Ảnh chụp cái gối massage + Text: "Cứu tinh cho anh em cột sống đây" + Link.
+
+Nuôi nick Clone: Hệ thống này sống nhờ nick clone (để seeding). Bạn cần plan nuôi 1 dàn nick clone chất lượng để comment dạo.
+
+Bạn thấy plan này "đủ độ" để triển khai chưa hay cần thêm mắm muối chỗ n

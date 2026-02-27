@@ -1,0 +1,159 @@
+Tuyệt vời! Nếu bạn đã "duyệt" kế hoạch, chúng ta sẽ bắt tay vào phần Technical Implementation (Triển khai kỹ thuật).
+
+Dưới đây là cấu trúc code Python (Skeleton Code) cho hệ thống này. Tôi sẽ tập trung vào 2 phần quan trọng nhất: Logic xử lý nội dung bằng AI (để lái sang bán hàng) và Code đẩy bài lên Facebook + Auto Comment Link.
+
+Cấu Trúc Project (Folder Structure)
+Bạn nên tổ chức thư mục như sau để dễ quản lý:
+
+Plaintext
+/shopee-auto-bot
+│
+├── main.py                 # File chạy chính (Main Loop)
+├── config.py               # Chứa API KEY, Page Token, Shopee Link
+├── modules/
+│   ├── __init__.py
+│   ├── crawler.py          # Class lấy bài từ Voz/Reddit
+│   ├── ai_writer.py        # Class gọi Gemini/OpenAI để viết bài
+│   └── fb_publisher.py     # Class đăng bài & comment Facebook
+└── data/
+    └── posted_ids.txt      # Lưu ID bài đã cào để tránh đăng trùng
+Phần 1: Module AI Writer (ai_writer.py)
+Đây là "bộ não" của tool. Nhiệm vụ là biến một câu chuyện "tào lao" thành một bài bán hàng duyên dáng.
+
+Python
+# modules/ai_writer.py
+import google.generativeai as genai
+from config import GEMINI_API_KEY
+
+genai.configure(api_key=GEMINI_API_KEY)
+
+class AIContentCreator:
+    def __init__(self):
+        self.model = genai.GenerativeModel('gemini-2.0-flash') # Dùng bản Flash cho rẻ và nhanh
+
+    def generate_selling_post(self, original_content, product_info):
+        """
+        original_content: Nội dung cào từ Voz/Reddit
+        product_info: Dict chứa {tên_sp, công_dụng}
+        """
+        
+        # PROMPT KỸ THUẬT CAO (Chain-of-thought)
+        prompt = f"""
+        Bạn là một Admin Fanpage hài hước, hơi "bựa" nhưng rất duyên.
+        
+        Nhiệm vụ: 
+        1. Hãy đọc câu chuyện gốc dưới đây:
+        "{original_content}"
+        
+        2. Viết lại câu chuyện này ngắn gọn hơn (tầm 100-150 từ), giữ giọng văn kể khổ hoặc châm biếm.
+        
+        3. QUAN TRỌNG: Ở cuối bài, hãy "bẻ lái" (plot twist) sang việc giới thiệu sản phẩm này một cách mượt mà nhất, khiến người đọc buồn cười mà vẫn muốn mua:
+        - Sản phẩm: {product_info['name']}
+        - Công dụng: {product_info['desc']}
+        
+        4. Yêu cầu output: Chỉ trả về nội dung bài viết (Caption), không kèm lời dẫn. Dùng icon hợp lý.
+        """
+        
+        response = self.model.generate_content(prompt)
+        return response.text.strip()
+Phần 2: Module Facebook Publisher (fb_publisher.py)
+Module này chịu trách nhiệm đăng bài và quan trọng nhất là Auto-comment link dưới bài viết đó (để tránh bị Facebook bóp tương tác bài viết chính).
+
+Python
+# modules/fb_publisher.py
+import requests
+import time
+
+class FacebookPoster:
+    def __init__(self, page_access_token, page_id):
+        self.token = page_access_token
+        self.page_id = page_id
+        self.base_url = "https://graph.facebook.com/v19.0"
+
+    def post_image_and_text(self, caption, image_url):
+        """
+        Đăng ảnh kèm caption lên Page
+        """
+        url = f"{self.base_url}/{self.page_id}/photos"
+        payload = {
+            'message': caption,
+            'url': image_url, # URL ảnh (hoặc upload file local)
+            'access_token': self.token
+        }
+        
+        response = requests.post(url, data=payload)
+        if response.status_code == 200:
+            post_id = response.json().get('id') # Lấy Post ID về để comment
+            print(f"✅ Đã đăng bài thành công! ID: {post_id}")
+            return post_id
+        else:
+            print(f"❌ Lỗi đăng bài: {response.text}")
+            return None
+
+    def comment_affiliate_link(self, post_id, shopee_link):
+        """
+        Tự động comment link Shopee vào bài vừa đăng (Seeding)
+        """
+        # Đợi 5s cho Facebook xử lý xong bài đăng
+        time.sleep(5) 
+        
+        url = f"{self.base_url}/{post_id}/comments"
+        comment_text = f"Link săn sale chính hãng cho anh em đây nhé: {shopee_link} 🔥"
+        
+        payload = {
+            'message': comment_text,
+            'access_token': self.token
+        }
+        
+        response = requests.post(url, data=payload)
+        if response.status_code == 200:
+            print(f"✅ Đã comment link affiliate thành công!")
+        else:
+            print(f"❌ Lỗi comment: {response.text}")
+Phần 3: Logic vận hành (main.py)
+Kết nối các phần lại với nhau. Giả sử chúng ta có danh sách sản phẩm mẫu.
+
+Python
+# main.py
+from modules.ai_writer import AIContentCreator
+from modules.fb_publisher import FacebookPoster
+from config import FB_PAGE_TOKEN, FB_PAGE_ID
+import random
+
+# Giả lập database sản phẩm Shopee (Thực tế bạn lưu trong DB/Excel)
+PRODUCTS = [
+    {"name": "Chuột Gaming Logitech", "desc": "Bấm êm, không lo liệt nút khi combat", "link": "https://shopee.vn/abcd..."},
+    {"name": "Máy cạo râu Xiaomi", "desc": "Cạo sạch, không rát, tút lại vẻ đẹp trai", "link": "https://shopee.vn/xyz..."}
+]
+
+# Giả lập bài viết cào được từ Voz (Thực tế dùng Crawler)
+MOCK_VOZ_POST = "Hôm nay trời nóng quá anh em ạ, ngồi chơi game mà mồ hôi tay ra ướt nhẹp cả chuột, bắn toàn trượt, chán đời quá."
+
+def run_automation():
+    # 1. Khởi tạo
+    ai = AIContentCreator()
+    fb = FacebookPoster(FB_PAGE_TOKEN, FB_PAGE_ID)
+    
+    # 2. Chọn sản phẩm phù hợp (Ở đây đang random, nâng cao sẽ dùng AI để match)
+    selected_product = random.choice(PRODUCTS)
+    
+    print(f"🔄 Đang xử lý bài viết với sản phẩm: {selected_product['name']}...")
+    
+    # 3. AI viết bài
+    new_caption = ai.generate_selling_post(MOCK_VOZ_POST, selected_product)
+    print("--- Content AI tạo ---")
+    print(new_caption)
+    print("----------------------")
+    
+    # 4. Đăng lên Facebook
+    # (Dùng ảnh minh họa tạm thời)
+    image_url = "https://example.com/anh-minh-hoa-san-pham.jpg" 
+    
+    post_id = fb.post_image_and_text(new_caption, image_url)
+    
+    # 5. Comment Link
+    if post_id:
+        fb.comment_affiliate_link(post_id, selected_product['link'])
+
+if __name__ == "__main__":
+    run_automation()

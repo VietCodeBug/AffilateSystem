@@ -1,0 +1,31 @@
+# Environment Variables
+.env
+.env.local
+
+# Python files
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Node modules
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# IDE/Editors
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+dashboard/.next/
+dashboard/node_modules/
+backend/__pycache__/
+backend/.venv/
