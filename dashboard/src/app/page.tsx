@@ -8,6 +8,8 @@ import { ContentHunterPage } from "@/components/pages/content-hunter-page";
 import { AiWriterPage } from "@/components/pages/ai-writer-page";
 import { AffiliateLinksPage } from "@/components/pages/affiliate-links-page";
 import { PublisherPage } from "@/components/pages/publisher-page";
+import { MediaLibraryPage } from "@/components/pages/media-library-page";
+import { VideoTranslatorPage } from "@/components/pages/video-translator-page";
 import { SettingsPage } from "@/components/pages/settings-page";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -17,6 +19,8 @@ const pages: Record<string, { title: string; component: React.ComponentType }> =
   "ai-writer": { title: "AI Writer", component: AiWriterPage },
   "affiliate-links": { title: "Affiliate Links", component: AffiliateLinksPage },
   publisher: { title: "Publisher", component: PublisherPage },
+  "media-library": { title: "Media Library", component: MediaLibraryPage },
+  "video-translator": { title: "Video Translator", component: VideoTranslatorPage },
   settings: { title: "Cài đặt", component: SettingsPage },
 };
 

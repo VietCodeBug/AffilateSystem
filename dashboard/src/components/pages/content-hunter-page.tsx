@@ -58,14 +58,20 @@ export function ContentHunterPage() {
     ]);
     const [threads, setThreads] = useState<CrawledThread[]>([]);
     const [filter, setFilter] = useState("Tất cả");
-    const [dateFilter, setDateFilter] = useState("3_days"); // "today", "yesterday", "3_days", "all"
+    const [dateFilter, setDateFilter] = useState("all"); // "today", "yesterday", "3_days", "all"
     const [crawlDialogOpen, setCrawlDialogOpen] = useState(false);
     const [initialLoading, setInitialLoading] = useState(true);
 
+    // AI Dialog state
+    const [aiDialogOpen, setAiDialogOpen] = useState(false);
+    const [aiThread, setAiThread] = useState<CrawledThread | null>(null);
+    const [aiProductName, setAiProductName] = useState("Bàn phím cơ văn phòng");
+
     // Pagination
     const [page, setPage] = useState(1);
-    const [hasMore, setHasMore] = useState(true);
-    const LIMIT = 30;
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
+    const PAGE_SIZE = 20;
 
     // Loading states for actions
     const [sendingAI, setSendingAI] = useState<Record<string, boolean>>({});
@@ -102,8 +108,7 @@ export function ContentHunterPage() {
                 startDateParam = past.toISOString();
             }
 
-            const offset = (currentPage - 1) * LIMIT;
-            let url = `/api/threads?limit=${LIMIT}&offset=${offset}`;
+            let url = `/api/threads?page=${currentPage}&page_size=${PAGE_SIZE}`;
             if (startDateParam) url += `&start_date=${encodeURIComponent(startDateParam)}`;
 
             const res = await fetch(url);
@@ -116,17 +121,9 @@ export function ContentHunterPage() {
                     source: t.source || "unknown",
                 }));
 
-                if (isLoadMore) {
-                    setThreads(prev => {
-                        const existingIds = new Set(prev.map(p => p.id));
-                        const newToAdd = loadedThreads.filter((nt: CrawledThread) => !existingIds.has(nt.id));
-                        return [...prev, ...newToAdd];
-                    });
-                } else {
-                    setThreads(loadedThreads);
-                }
-
-                setHasMore(loadedThreads.length === LIMIT);
+                setThreads(loadedThreads);
+                setTotalPages(data.total_pages || 1);
+                setTotalCount(data.total || 0);
             }
 
             // Stats
@@ -207,7 +204,9 @@ export function ContentHunterPage() {
         }, 400);
 
         try {
-            const res = await fetch(`/api/crawl/${src.apiPath}`);
+            const res = await fetch(`/api/crawl/${src.apiPath}`, {
+                method: "POST",
+            });
             const data = await res.json();
 
             clearInterval(progressTimer);
@@ -275,41 +274,42 @@ export function ContentHunterPage() {
         toast("Đã xóa bài viết");
     };
 
-    const sendToAI = async (thread: CrawledThread) => {
+    const sendToAI = (thread: CrawledThread) => {
         if ((thread as any).sent_to_ai) return; // Prevent double send
+        setAiThread(thread);
+        setAiDialogOpen(true);
+    };
 
-        setSendingAI(prev => ({ ...prev, [thread.id]: true }));
+    const confirmSendToAI = async () => {
+        if (!aiThread || !aiProductName.trim()) return;
+
+        setAiDialogOpen(false);
+        setSendingAI(prev => ({ ...prev, [aiThread.id]: true }));
         try {
-            const productName = prompt("Tên sản phẩm muốn gợi ý cho bài này?", "Bàn phím cơ văn phòng");
-            if (!productName) {
-                setSendingAI(prev => ({ ...prev, [thread.id]: false }));
-                return;
-            }
-
-            const res = await fetch(`/api/ai/generate-from-thread/${thread.id}?product_name=${encodeURIComponent(productName)}`, {
+            const res = await fetch(`/api/ai/generate-from-thread/${aiThread.id}?product_name=${encodeURIComponent(aiProductName.trim())}`, {
                 method: "POST"
             });
             const data = await res.json();
 
             if (data.error) {
                 toast.error("Lỗi AI", { description: data.error });
-                setSendingAI(prev => ({ ...prev, [thread.id]: false }));
+                setSendingAI(prev => ({ ...prev, [aiThread.id]: false }));
             } else {
-                toast.success(`Đã gửi sang AI Writer`, { description: `Đã tạo chiến dịch cho "${productName}"` });
+                toast.success(`Đã gửi sang AI Writer`, { description: `Bắt đầu viết cho "${aiProductName}"` });
 
                 // Update local list to mark as sent immediately
                 setThreads(prev => prev.map(t =>
-                    t.id === thread.id ? { ...t, sent_to_ai: true } : t
+                    t.id === aiThread.id ? { ...t, sent_to_ai: true } : t
                 ));
 
                 // Keep it showing as loading for just a moment longer for UX
                 setTimeout(() => {
-                    setSendingAI(prev => ({ ...prev, [thread.id]: false }));
+                    setSendingAI(prev => ({ ...prev, [aiThread.id]: false }));
                 }, 500);
             }
         } catch (error) {
             toast.error("Lỗi kết nối", { description: "Không thể gọi API AI" });
-            setSendingAI(prev => ({ ...prev, [thread.id]: false }));
+            setSendingAI(prev => ({ ...prev, [aiThread.id]: false }));
         }
     };
 
@@ -472,7 +472,28 @@ export function ContentHunterPage() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    {filtered.length === 0 ? (
+                    {initialLoading ? (
+                        <div className="py-8 space-y-4">
+                            {[...Array(5)].map((_, i) => (
+                                <div key={i} className="flex gap-4 items-start px-2 animate-pulse">
+                                    <div className="w-12 h-5 bg-gray-200 rounded-lg mt-1 shrink-0"></div>
+                                    <div className="flex-1 space-y-2">
+                                        <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                                        <div className="h-3 bg-gray-100 rounded w-full"></div>
+                                        <div className="flex gap-3 mt-2">
+                                            <div className="h-3 bg-gray-100 rounded w-16"></div>
+                                            <div className="h-3 bg-gray-100 rounded w-12"></div>
+                                            <div className="h-3 bg-gray-100 rounded w-12"></div>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2 shrink-0">
+                                        <div className="w-8 h-8 bg-gray-200 rounded-md"></div>
+                                        <div className="w-8 h-8 bg-gray-200 rounded-md"></div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : filtered.length === 0 ? (
                         <div className="py-16 text-center">
                             <div className="text-4xl mb-3">🕷️</div>
                             <p className="text-sm text-gray-500 font-medium">Chưa có dữ liệu</p>
@@ -569,18 +590,32 @@ export function ContentHunterPage() {
                                 );
                             })}
 
-                            {/* Load more button */}
-                            {hasMore && filtered.length > 0 && (
-                                <div className="py-4 flex justify-center border-t border-gray-50">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setPage(p => p + 1)}
-                                        className="text-xs text-orange-600 border-orange-200 hover:bg-orange-50"
-                                        disabled={initialLoading}
-                                    >
-                                        {initialLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : "Tải thêm bài cũ hơn"}
-                                    </Button>
+                            {/* Pagination */}
+                            {totalPages > 1 && (
+                                <div className="py-4 flex items-center justify-between border-t border-gray-50 px-2">
+                                    <span className="text-[11px] text-gray-400">
+                                        Trang {page}/{totalPages} · Tổng {totalCount} bài
+                                    </span>
+                                    <div className="flex gap-1.5">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                                            disabled={page <= 1 || initialLoading}
+                                            className="text-xs h-7"
+                                        >
+                                            ← Trước
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                                            disabled={page >= totalPages || initialLoading}
+                                            className="text-xs h-7"
+                                        >
+                                            Sau →
+                                        </Button>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -647,6 +682,41 @@ export function ContentHunterPage() {
                             </DialogFooter>
                         </>
                     )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Send to AI Dialog */}
+            <Dialog open={aiDialogOpen} onOpenChange={setAiDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Wand2 className="w-5 h-5 text-orange-500" />
+                            Gửi sang AI Writer
+                        </DialogTitle>
+                        <DialogDescription>
+                            Nhập tên sản phẩm bạn muốn Gemini gợi ý (hook) dựa trên bài này.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <label className="text-sm font-medium text-gray-700 mb-1.5 block">Tên sản phẩm / Dịch vụ</label>
+                        <input
+                            type="text"
+                            className="w-full flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            value={aiProductName}
+                            onChange={(e) => setAiProductName(e.target.value)}
+                            placeholder="Ví dụ: Bàn phím cơ MCHOSE..."
+                            autoFocus
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') confirmSendToAI();
+                            }}
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setAiDialogOpen(false)}>Hủy</Button>
+                        <Button className="bg-gradient-to-r from-orange-500 to-orange-600 font-semibold text-white hover:shadow-lg hover:shadow-orange-500/25" onClick={confirmSendToAI}>
+                            Xác nhận tạo
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </>

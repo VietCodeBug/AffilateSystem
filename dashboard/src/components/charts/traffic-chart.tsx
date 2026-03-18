@@ -56,7 +56,7 @@ export function TrafficChart() {
                                 color: "#fff",
                                 fontSize: 12,
                             }}
-                            formatter={(value: number) => [`${value}%`, ""]}
+                            formatter={(value: any) => [`${value}%`, ""]}
                         />
                     </PieChart>
                 </ResponsiveContainer>

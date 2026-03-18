@@ -7,13 +7,15 @@ import {
     Bot,
     Link,
     Send,
+    FolderOpen,
+    Languages,
     Settings,
     X,
     Zap,
     ChevronLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface SidebarProps {
@@ -23,7 +25,20 @@ interface SidebarProps {
     onClose: () => void;
 }
 
-const navSections = [
+interface NavItem {
+    id: string;
+    icon: any;
+    label: string;
+    badge?: number;
+    pulse?: boolean;
+}
+
+interface NavSection {
+    label: string;
+    items: NavItem[];
+}
+
+const navSections: NavSection[] = [
     {
         label: "TỔNG QUAN",
         items: [
@@ -33,10 +48,12 @@ const navSections = [
     {
         label: "HỆ THỐNG",
         items: [
-            { id: "content-hunter", icon: Crosshair, label: "Content Hunter", badge: 12 },
-            { id: "ai-writer", icon: Bot, label: "AI Writer", badge: 5, pulse: true },
+            { id: "content-hunter", icon: Crosshair, label: "Content Hunter" },
+            { id: "ai-writer", icon: Bot, label: "AI Writer" },
             { id: "affiliate-links", icon: Link, label: "Affiliate Links" },
             { id: "publisher", icon: Send, label: "Publisher" },
+            { id: "media-library", icon: FolderOpen, label: "Media Library" },
+            { id: "video-translator", icon: Languages, label: "Video Translator" },
         ],
     },
     {
@@ -49,6 +66,39 @@ const navSections = [
 
 export function Sidebar({ activePage, onNavigate, open, onClose }: SidebarProps) {
     const [collapsed, setCollapsed] = useState(false);
+    const [stats, setStats] = useState({ contentHunter: 0, aiWriter: 0 });
+
+    useEffect(() => {
+        const fetchStats = async () => {
+            try {
+                const res = await fetch("/api/stats");
+                const data = await res.json();
+                setStats({
+                    contentHunter: data.total_threads || 0,
+                    aiWriter: data.campaigns?.draft || 0
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        };
+        fetchStats();
+        // Cập nhật ngầm mỗi 30s
+        const interval = setInterval(fetchStats, 30000);
+        return () => clearInterval(interval);
+    }, [activePage]);
+
+    const dynamicNavSections = navSections.map(s => ({
+        ...s,
+        items: s.items.map(item => {
+            if (item.id === "content-hunter") {
+                return { ...item, badge: stats.contentHunter || undefined };
+            }
+            if (item.id === "ai-writer") {
+                return { ...item, badge: stats.aiWriter || undefined, pulse: stats.aiWriter > 0 };
+            }
+            return item;
+        })
+    }));
 
     return (
         <aside
@@ -97,7 +147,7 @@ export function Sidebar({ activePage, onNavigate, open, onClose }: SidebarProps)
 
             {/* Navigation */}
             <nav className="flex-1 px-2 py-3 overflow-y-auto">
-                {navSections.map((section) => (
+                {dynamicNavSections.map((section) => (
                     <div key={section.label} className="mb-1">
                         {!collapsed && (
                             <span className="block text-[#57534E] text-[9px] font-bold tracking-[2px] uppercase px-3 py-2 select-none">

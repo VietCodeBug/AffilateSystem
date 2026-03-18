@@ -13,7 +13,9 @@ import {
 } from "@/components/ui/dialog";
 import { Key, Send, Clock, Shield, Eye, CheckCircle, AlertTriangle, Save, Loader2, TestTube } from "lucide-react";
 import { toast } from "sonner";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 interface Config {
     geminiKey: string;
@@ -28,50 +30,129 @@ interface Config {
     schedules: { period: string; emoji: string; time: string; freq: string }[];
 }
 
+const defaultConfig: Config = {
+    geminiKey: "",
+    fbToken: "",
+    fbPageId: "",
+    botToken: "",
+    chatId: "",
+    telegramNotify: true,
+    domainRotation: true,
+    spintax: true,
+    semiAuto: false,
+    schedules: [
+        { period: "Giờ hành chính", emoji: "🌅", time: "8:00 — 17:00", freq: "30" },
+        { period: "Nghỉ trưa", emoji: "☀️", time: "12:00 — 13:00", freq: "15" },
+        { period: "Đêm khuya", emoji: "🌙", time: "22:00 — 01:00", freq: "60" },
+    ],
+};
+
 export function SettingsPage() {
     const [showGeminiKey, setShowGeminiKey] = useState(false);
     const [showBotToken, setShowBotToken] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [testDialog, setTestDialog] = useState<string | null>(null);
     const [testResult, setTestResult] = useState<"idle" | "testing" | "success" | "error">("idle");
 
-    const [config, setConfig] = useState<Config>({
-        geminiKey: "AIzaSyAssh5FENxAUjO",
-        fbToken: "",
-        fbPageId: "",
-        botToken: "8586020347:AAF76R",
-        chatId: "5011704710",
-        telegramNotify: true,
-        domainRotation: true,
-        spintax: true,
-        semiAuto: false,
-        schedules: [
-            { period: "Giờ hành chính", emoji: "🌅", time: "8:00 — 17:00", freq: "30" },
-            { period: "Nghỉ trưa", emoji: "☀️", time: "12:00 — 13:00", freq: "15" },
-            { period: "Đêm khuya", emoji: "🌙", time: "22:00 — 01:00", freq: "60" },
-        ],
-    });
+    const [config, setConfig] = useState<Config>(defaultConfig);
 
+    /* ─── Load settings from DB ─── */
+    useEffect(() => {
+        const loadSettings = async () => {
+            try {
+                const res = await fetch(`${API}/api/settings`);
+                const data = await res.json();
+                if (data.settings) {
+                    setConfig(prev => ({
+                        ...prev,
+                        geminiKey: data.settings.geminiKey ?? prev.geminiKey,
+                        fbToken: data.settings.fbToken ?? prev.fbToken,
+                        fbPageId: data.settings.fbPageId ?? prev.fbPageId,
+                        botToken: data.settings.botToken ?? prev.botToken,
+                        chatId: data.settings.chatId ?? prev.chatId,
+                        telegramNotify: data.settings.telegramNotify ?? prev.telegramNotify,
+                        domainRotation: data.settings.domainRotation ?? prev.domainRotation,
+                        spintax: data.settings.spintax ?? prev.spintax,
+                        semiAuto: data.settings.semiAuto ?? prev.semiAuto,
+                        schedules: data.settings.schedules ?? prev.schedules,
+                    }));
+                }
+            } catch {
+                console.error("Failed to load settings");
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadSettings();
+    }, []);
+
+    /* ─── Save settings to DB ─── */
     const handleSave = async () => {
         setSaving(true);
-        await new Promise((r) => setTimeout(r, 1200));
-        setSaving(false);
-        toast.success("Đã lưu cài đặt!", { description: "Tất cả thay đổi đã được áp dụng" });
+        try {
+            const res = await fetch(`${API}/api/settings`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    settings: {
+                        geminiKey: config.geminiKey,
+                        fbToken: config.fbToken,
+                        fbPageId: config.fbPageId,
+                        botToken: config.botToken,
+                        chatId: config.chatId,
+                        telegramNotify: config.telegramNotify,
+                        domainRotation: config.domainRotation,
+                        spintax: config.spintax,
+                        semiAuto: config.semiAuto,
+                        schedules: config.schedules,
+                    },
+                }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+                toast.success("Đã lưu cài đặt!", { description: "Tất cả thay đổi đã được lưu vào database" });
+            } else {
+                toast.error("Lỗi khi lưu", { description: data.error });
+            }
+        } catch {
+            toast.error("Lỗi kết nối server");
+        } finally {
+            setSaving(false);
+        }
     };
 
-    const testConnection = (type: string) => {
+    const testConnection = async (type: string) => {
         setTestDialog(type);
         setTestResult("testing");
-        setTimeout(() => {
-            setTestResult(Math.random() > 0.3 ? "success" : "error");
-        }, 2000);
+        try {
+            if (type === "Gemini") {
+                const res = await fetch(`${API}/api/stats`);
+                const data = await res.json();
+                setTestResult(data.gemini === "configured" ? "success" : "error");
+            } else {
+                // Telegram test — just check if bot token is set
+                setTestResult(config.botToken ? "success" : "error");
+            }
+        } catch {
+            setTestResult("error");
+        }
     };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center py-20">
+                <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+                <span className="ml-3 text-gray-500">Đang tải cài đặt...</span>
+            </div>
+        );
+    }
 
     return (
         <>
             <div className="mb-6">
                 <h2 className="text-xl font-bold text-gray-900">Cài đặt</h2>
-                <p className="text-sm text-gray-500 mt-1">Cấu hình API keys, tần suất đăng bài và Telegram Bot</p>
+                <p className="text-sm text-gray-500 mt-1">Cấu hình API keys, tần suất đăng bài và Telegram Bot — <strong>tự động lưu vào database</strong></p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -163,9 +244,6 @@ export function SettingsPage() {
                                         </Button>
                                     </div>
                                 </div>
-                                <span className="text-[11px] text-green-600 flex items-center gap-1">
-                                    <CheckCircle className="w-3 h-3" /> Bot đang chạy
-                                </span>
                             </div>
 
                             <div className="space-y-1.5">

@@ -44,17 +44,15 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 /* ─── Types ─── */
 interface Campaign {
     id: string;
-    bait_content: string;
-    hook_comment: string;
+    bait: string;
+    hook: string;
     product_name: string;
     product_link: string;
     shortened_link: string;
     page_persona: string;
     source_thread_id: string;
     status: "draft" | "approved" | "posted" | "failed";
-    post_id: string;
     created_at: string;
-    posted_at: string;
     suggested_image?: string;
 }
 
@@ -78,6 +76,12 @@ export function AiWriterPage() {
     const [confirmApprove, setConfirmApprove] = useState<Campaign | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<Campaign | null>(null);
 
+    // Pagination
+    const [page, setPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
+    const PAGE_SIZE = 20;
+
     // Generate form
     const [genProductName, setGenProductName] = useState("");
     const [genProductLink, setGenProductLink] = useState("");
@@ -85,21 +89,24 @@ export function AiWriterPage() {
     const [genSourceContent, setGenSourceContent] = useState("");
 
     /* ─── Load campaigns from API ─── */
-    const loadCampaigns = useCallback(async () => {
+    const loadCampaigns = useCallback(async (p = page) => {
+        setLoading(true);
         try {
-            const res = await fetch(`${API}/api/campaigns?limit=50`);
+            const res = await fetch(`${API}/api/campaigns?page=${p}&page_size=${PAGE_SIZE}`);
             const data = await res.json();
             setCampaigns(data.campaigns || []);
+            setTotalPages(data.total_pages || 1);
+            setTotalCount(data.total || 0);
         } catch {
             console.error("Failed to load campaigns");
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [page]);
 
     useEffect(() => {
-        loadCampaigns();
-    }, [loadCampaigns]);
+        loadCampaigns(page);
+    }, [page, loadCampaigns]);
 
     /* ─── Generate new Bait & Hook ─── */
     const handleGenerate = async () => {
@@ -201,7 +208,7 @@ export function AiWriterPage() {
         setCampaigns((prev) =>
             prev.map((c) =>
                 c.id === editingCampaign.id
-                    ? { ...c, bait_content: editBait, hook_comment: editHook }
+                    ? { ...c, bait: editBait, hook: editHook }
                     : c
             )
         );
@@ -244,7 +251,7 @@ export function AiWriterPage() {
                 <div className="flex gap-2">
                     <Button
                         variant="outline"
-                        onClick={loadCampaigns}
+                        onClick={() => loadCampaigns()}
                         className="gap-2 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-300"
                     >
                         <RefreshCw className="w-4 h-4" /> Làm mới
@@ -326,7 +333,7 @@ export function AiWriterPage() {
                                         <Fish className="w-3.5 h-3.5" /> MỒI NHỬ (Bài đăng)
                                     </div>
                                     <p className="text-[13px] text-gray-700 leading-relaxed line-clamp-4 bg-violet-50/50 rounded-lg px-3 py-2 border border-violet-100/50">
-                                        {camp.bait_content}
+                                        {camp.bait}
                                     </p>
                                 </div>
 
@@ -336,7 +343,7 @@ export function AiWriterPage() {
                                         <Anchor className="w-3.5 h-3.5" /> LƯỠI CÂU (Comment)
                                     </div>
                                     <p className="text-[13px] text-gray-600 leading-relaxed line-clamp-3 bg-amber-50/50 rounded-lg px-3 py-2 border border-amber-100/50">
-                                        {camp.hook_comment}
+                                        {camp.hook}
                                     </p>
                                 </div>
 
@@ -371,8 +378,8 @@ export function AiWriterPage() {
                                                 className="text-xs h-8 text-gray-500 hover:text-orange-600"
                                                 onClick={() => {
                                                     setEditingCampaign(camp);
-                                                    setEditBait(camp.bait_content);
-                                                    setEditHook(camp.hook_comment);
+                                                    setEditBait(camp.bait);
+                                                    setEditHook(camp.hook);
                                                 }}
                                             >
                                                 <Pencil className="w-3.5 h-3.5 mr-1" /> Sửa
@@ -401,6 +408,35 @@ export function AiWriterPage() {
                     ))
                 )}
             </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                    <span className="text-[11px] text-gray-400">
+                        Trang {page}/{totalPages} · Tổng {totalCount} chiến dịch
+                    </span>
+                    <div className="flex gap-1.5">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            disabled={page <= 1}
+                            className="text-xs h-7"
+                        >
+                            ← Trước
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                            disabled={page >= totalPages}
+                            className="text-xs h-7"
+                        >
+                            Sau →
+                        </Button>
+                    </div>
+                </div>
+            )}
 
             {/* ═══ Generate Dialog ═══ */}
             <Dialog open={showGenDialog} onOpenChange={setShowGenDialog}>

@@ -9,24 +9,50 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface TopbarProps {
     title: string;
     onMenuToggle: () => void;
 }
 
-const notifications = [
-    { icon: Check, iconBg: "bg-green-100 text-green-500", title: "Đã đăng bài thành công", desc: 'Page "Meme Văn Phòng" — 2 phút trước', read: false },
-    { icon: Wand2, iconBg: "bg-orange-100 text-orange-500", title: "5 bài AI mới chờ duyệt", desc: "Nguồn: Voz Forum — 10 phút trước", read: false },
-    { icon: ShoppingCart, iconBg: "bg-yellow-100 text-yellow-600", title: "Đơn hàng mới!", desc: "Chuột Gaming Logitech — 45,000đ hoa hồng", read: false },
-    { icon: Zap, iconBg: "bg-blue-100 text-blue-500", title: "Đã cào 12 bài mới", desc: "Reddit r/voz — 30 phút trước", read: true },
-];
-
 export function Topbar({ title, onMenuToggle }: TopbarProps) {
     const [searchFocused, setSearchFocused] = useState(false);
     const [notifOpen, setNotifOpen] = useState(false);
-    const [notifs, setNotifs] = useState(notifications);
+    const [notifs, setNotifs] = useState<any[]>([]);
+
+    useEffect(() => {
+        const fetchStats = async () => {
+            try {
+                const res = await fetch("/api/stats");
+                const data = await res.json();
+
+                const newNotifs = [];
+                // Unread notification for AI drafts
+                if (data.campaigns?.draft > 0) {
+                    newNotifs.push({
+                        icon: Wand2, iconBg: "bg-orange-100 text-orange-500",
+                        title: `${data.campaigns.draft} bài AI chờ duyệt`,
+                        desc: "Từ kho AI Writer", read: false
+                    });
+                }
+                // Read notification for total crawled threads
+                if (data.total_threads > 0) {
+                    newNotifs.push({
+                        icon: Zap, iconBg: "bg-blue-100 text-blue-500",
+                        title: `Kho Data: ${data.total_threads} bài viết`,
+                        desc: "Cào từ Reddit & Voz", read: true
+                    });
+                }
+                setNotifs(newNotifs);
+            } catch (e) {
+                console.error(e);
+            }
+        };
+        fetchStats();
+        const interval = setInterval(fetchStats, 30000);
+        return () => clearInterval(interval);
+    }, []);
 
     const unreadCount = notifs.filter((n) => !n.read).length;
 
@@ -54,8 +80,8 @@ export function Topbar({ title, onMenuToggle }: TopbarProps) {
             <div className="flex items-center gap-2">
                 {/* Search */}
                 <div className={`hidden sm:flex items-center gap-2 rounded-full px-3.5 py-1.5 transition-all duration-300 border ${searchFocused
-                        ? "bg-white border-orange-300 ring-2 ring-orange-100 w-56"
-                        : "bg-gray-100/80 border-transparent w-44"
+                    ? "bg-white border-orange-300 ring-2 ring-orange-100 w-56"
+                    : "bg-gray-100/80 border-transparent w-44"
                     }`}>
                     <Search className={`w-3.5 h-3.5 transition-colors ${searchFocused ? "text-orange-500" : "text-gray-400"}`} />
                     <Input

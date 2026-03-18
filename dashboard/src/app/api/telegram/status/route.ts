@@ -2,18 +2,17 @@ import { NextResponse } from "next/server";
 
 const BACKEND_URL = process.env.CRAWLER_BACKEND_URL || "http://localhost:8000";
 
-export async function POST() {
+export async function GET() {
     try {
-        const res = await fetch(`${BACKEND_URL}/api/crawl/reddit`, {
-            method: "POST",
+        const res = await fetch(`${BACKEND_URL}/api/telegram/status`, {
             cache: "no-store",
         });
         const data = await res.json();
         return NextResponse.json(data);
     } catch {
         return NextResponse.json(
-            { error: "Python backend chưa chạy — chạy: python backend/main.py", threads: [], source: "reddit" },
-            { status: 200 }
+            { running: false, bot_username: "", links_received: 0, token_configured: false },
+            { status: 500 }
         );
     }
 }

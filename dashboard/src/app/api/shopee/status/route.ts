@@ -4,11 +4,13 @@ const BACKEND_URL = process.env.CRAWLER_BACKEND_URL || "http://localhost:8000";
 
 export async function GET() {
     try {
-        // Cache stats for 60 seconds to avoid spamming the Python backend and Firestore
-        const res = await fetch(`${BACKEND_URL}/api/stats`, { next: { revalidate: 60 } });
+        const res = await fetch(`${BACKEND_URL}/api/shopee/status`, { cache: "no-store" });
         const data = await res.json();
         return NextResponse.json(data);
     } catch {
-        return NextResponse.json({ voz: 0, xamvn: 0, total: 0 }, { status: 200 });
+        return NextResponse.json(
+            { logged_in: false, username: "", avatar: "", message: "Backend chưa chạy" },
+            { status: 200 }
+        );
     }
 }

@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 
 const BACKEND_URL = process.env.CRAWLER_BACKEND_URL || "http://localhost:8000";
 
-export async function GET() {
+export async function POST() {
     try {
         const res = await fetch(`${BACKEND_URL}/api/crawl/voz`, {
+            method: "POST",
             cache: "no-store",
         });
         const data = await res.json();
